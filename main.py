@@ -1,40 +1,59 @@
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from entity_relationship_model import EntityRelationshipDataset, EntityRelationshipModel, train_model
-from data_preprocessing import get_dataset
-import torch
-import torch.nn as nn
-import torch.optim as optim
+# -*- coding: utf-8 -*-
+# @Time    : 2025-02-15 09:28
+# @Author  : Antonio
+# @Description :  script description
+
+
 from torch.utils.data import DataLoader
-from sklearn.model_selection import train_test_split
-import pandas as pd
+import torch.nn as nn
+import torch
+from mkr_model import CompanyOperationEvaluation
+from train_model import KG_TrainSet, REC_TrainSet, train_model
+from utils import load_data, load_kg
+import argparse
 
 
+def main(args):
+    n_feature, n_entity, train_rec, eval_rec, test_rec = load_data()
+    n_head, n_relation, kg = load_kg()
+
+    kg_data = (kg.iloc[:, 0], kg.iloc[:, 1], kg.iloc[:, 2])
+    rec_data = train_rec
+    rec_val = eval_rec
+
+    train_data_kg = KG_TrainSet(kg_data)
+    train_loader_kg = DataLoader(train_data_kg, batch_size=args.batch_size, shuffle=args.shuffle_train)
+
+    train_data_rec = REC_TrainSet(rec_data)
+    eval_data_rec = REC_TrainSet(rec_val)
+
+    train_loader_rec = DataLoader(train_data_rec, batch_size=args.batch_size, shuffle=args.shuffle_train)
+    eval_loader_rec = DataLoader(eval_data_rec, batch_size=args.batch_size, shuffle=args.shuffle_test)
+
+    model = CompanyOperationEvaluation(n_entity + 1, n_head + 1, n_relation + 1, n_feature,
+                    embed_dim=args.batch_size,
+                    hidden_layers=args.hidden_layers,
+                    dropouts=args.dropouts, output_dim=args.output_rec)
+    optimizer = torch.optim.Adam(model.parameters(), weight_decay=args.weight_decay, lr=args.lr)
+    loss_function = nn.CrossEntropyLoss()
+    epochs = args.epochs
+    train_model(model, train_loader_rec, train_loader_kg, eval_loader_rec,
+                optimizer, loss_function, epochs)
 
 
-# Define constants
-MAX_LEN = 128
-BATCH_SIZE = 16
-NUM_EPOCHS = 5
-LEARNING_RATE = 1e-4
-NUM_CLASSES = 20
-
-tokenizer = AutoTokenizer.from_pretrained("./roberta-chinese-finetuned")
-
-data_path = "./data/entity_relation_data.jsonl"
-data, entity_labels, relation_labels = get_dataset(data_path)
-labels = [relation_labels.index(obs["relation"][0]["type"]) if obs["relation"] else 0 for obs in data]
-train_texts, val_texts, train_labels, val_labels = train_test_split(data, labels, test_size=0.2, random_state=42)
-
-train_dataset = EntityRelationshipDataset(train_texts, train_labels, tokenizer, MAX_LEN)
-val_dataset = EntityRelationshipDataset(val_texts, val_labels, tokenizer, MAX_LEN)
-
-train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = EntityRelationshipModel(tokenizer, NUM_CLASSES).to(device)
-
-optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE)
-criterion = nn.CrossEntropyLoss()
-
-train_model(model, train_loader, val_loader, optimizer, criterion)
+if __name__ == '__main__':
+    # add argument
+    parser = argparse.ArgumentParser(description="mkr model arguments")
+    parser.add_argument("--n_layer", type=int, default=2)
+    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--shuffle_train", type=bool, default=True)
+    parser.add_argument("--shuffle_test", type=bool, default=False)
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--embed_dim", type=int, default=64)
+    parser.add_argument("--output_rec", type=int, default=3)
+    parser.add_argument("--weight_decay", type=float, default=0.0)
+    parser.add_argument("--lr", type=float, default=0.001)
+    parser.add_argument("--hidden_layers", nargs='+', type=int, default=[64, 64])
+    parser.add_argument("--dropouts", nargs='+', type=float, default=[0.5, 0.5])
+    args = parser.parse_args()
+    main(args)
