@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
-# @Time    : 2020-02-27 16:06
-# @Author  : WenYi
-# @Contact : 1244058349@qq.com
-# @Description :  《Multi-task Learning for KG enhanced Recommendation》
+# @Time    : 2025-02-27 16:06
+# @Author  : Antonio
 
 import torch.nn as nn
 import torch
